@@ -1,5 +1,6 @@
 {
   "outputDirectory": "public",
+  "cleanUrls": true,
   "functions": {
     "api/telegram.ts": {
       "maxDuration": 60

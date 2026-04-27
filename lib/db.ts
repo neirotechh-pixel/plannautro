@@ -19,13 +19,14 @@ function today(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-export async function saveTasks(userId: number, tasks: ExtractedTask[]): Promise<void> {
+export async function saveTasks(userId: number, tasks: ExtractedTask[], defaultDay: string): Promise<void> {
+  if (tasks.length === 0) return;
   const db = client();
   const rows = tasks.map(t => ({
     user_id: userId,
     text: t.text,
     time: t.time,
-    day: today(),
+    day: t.date ?? defaultDay,
     done: false,
   }));
   const { error } = await db.from('tasks').insert(rows);
@@ -64,4 +65,40 @@ export async function clearTodayTasks(userId: number): Promise<number> {
     .select('id');
   if (error) throw error;
   return data?.length ?? 0;
+}
+
+export async function updateTask(
+  userId: number,
+  id: number,
+  updates: Partial<Pick<Task, 'text' | 'time' | 'day' | 'done'>>,
+): Promise<Task> {
+  const db = client();
+  const { data, error } = await db
+    .from('tasks')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Task;
+}
+
+export async function deleteTask(userId: number, id: number): Promise<void> {
+  const db = client();
+  const { error } = await db.from('tasks').delete().eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function getWeekTasks(userId: number, from: string, to: string): Promise<Task[]> {
+  const db = client();
+  const { data, error } = await db
+    .from('tasks')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('day', from)
+    .lte('day', to)
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Task[];
 }

@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Plannautro — Планировщик</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+      background: #F2F2F7;
+      color: #1D1D1F;
+      -webkit-font-smoothing: antialiased;
+    }
+    :root {
+      --blue: #0A84FF;
+      --purple: #BF5AF2;
+      --green: #30D158;
+      --red: #FF453A;
+      --orange: #FF9500;
+      --text: #1D1D1F;
+      --text2: #6E6E73;
+      --text3: #AEAEB2;
+      --bg: #F2F2F7;
+      --card: #FFFFFF;
+      --sep: #E5E5EA;
+      --today-bg: #EBF4FF;
+      --today-border: rgba(10,132,255,.25);
+    }
+
+    /* ── SETUP OVERLAY ── */
+    .overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .overlay.hidden { display: none; }
+    .modal {
+      background: var(--card);
+      border-radius: 28px;
+      padding: 40px 36px;
+      max-width: 400px; width: 100%;
+      box-shadow: 0 40px 100px rgba(0,0,0,.25);
+    }
+    .modal h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; letter-spacing: -.4px; }
+    .modal p  { font-size: 14px; color: var(--text2); line-height: 1.6; margin-bottom: 24px; }
+    .modal input {
+      width: 100%;
+      border: 1.5px solid var(--sep);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-family: "SF Mono", monospace;
+      letter-spacing: .5px;
+      outline: none;
+      transition: border-color .15s;
+      margin-bottom: 16px;
+    }
+    .modal input:focus { border-color: var(--blue); }
+    .btn-primary {
+      width: 100%;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    /* ── LAYOUT ── */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #app.hidden { display: none; }
+
+    /* ── HEADER ── */
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 0 16px;
+      height: 56px; min-height: 56px;
+      background: rgba(242,242,247,.85);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,0,0,.08);
+      position: relative; z-index: 10;
+    }
+    .logo { font-size: 17px; font-weight: 700; letter-spacing: -.4px; white-space: nowrap; }
+    .logo span { color: var(--blue); }
+    .week-nav { display: flex; align-items: center; gap: 4px; margin: 0 auto; }
+    .week-nav button {
+      width: 30px; height: 30px;
+      border: none; background: rgba(0,0,0,.06);
+      border-radius: 50%; font-size: 15px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .week-nav button:hover { background: rgba(0,0,0,.12); }
+    #week-label { font-size: 14px; font-weight: 600; min-width: 160px; text-align: center; letter-spacing: -.2px; }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .btn-today {
+      font-size: 13px; font-weight: 600; color: var(--blue);
+      background: rgba(10,132,255,.1); border: none;
+      border-radius: 8px; padding: 6px 12px;
+      cursor: pointer; transition: background .15s; white-space: nowrap;
+    }
+    .btn-today:hover { background: rgba(10,132,255,.18); }
+    .btn-mic {
+      width: 36px; height: 36px;
+      background: var(--blue); color: #fff;
+      border: none; border-radius: 50%;
+      font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(10,132,255,.4);
+      transition: transform .15s, box-shadow .15s;
+      flex-shrink: 0;
+    }
+    .btn-mic:hover { transform: scale(1.08); }
+    .btn-mic.recording {
+      background: var(--red);
+      animation: pulse-mic 1.2s ease-in-out infinite;
+      box-shadow: 0 4px 16px rgba(255,69,58,.5);
+    }
+    @keyframes pulse-mic {
+      0%,100% { transform: scale(1); }
+      50%      { transform: scale(1.12); }
+    }
+
+    /* ── WEEK GRID ── */
+    #week-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      padding: 10px;
+      overflow: hidden;
+      min-height: 0;
+    }
+    @media (max-width: 900px) {
+      #week-grid {
+        grid-template-columns: repeat(7, 200px);
+        overflow-x: auto; overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        padding-bottom: 16px;
+      }
+    }
+
+    /* ── DAY COLUMN ── */
+    .day-col {
+      display: flex; flex-direction: column;
+      background: var(--card);
+      border-radius: 18px;
+      border: 1px solid var(--sep);
+      overflow: hidden;
+      transition: border-color .15s;
+      min-height: 0;
+    }
+    .day-col.is-today {
+      background: var(--today-bg);
+      border-color: var(--today-border);
+    }
+    .day-col.drag-over {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(10,132,255,.15);
+    }
+    .day-head {
+      padding: 10px 10px 8px;
+      text-align: center;
+      border-bottom: 1px solid var(--sep);
+      flex-shrink: 0;
+    }
+    .day-col.is-today .day-head { border-bottom-color: var(--today-border); }
+    .day-name {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: .6px; text-transform: uppercase;
+      color: var(--text2); margin-bottom: 2px;
+    }
+    .day-col.is-today .day-name { color: var(--blue); }
+    .day-num {
+      font-size: 22px; font-weight: 700;
+      color: var(--text); letter-spacing: -.5px;
+    }
+    .day-col.is-today .day-num {
+      background: var(--blue); color: #fff;
+      width: 36px; height: 36px; line-height: 36px;
+      border-radius: 50%; margin: 0 auto;
+      font-size: 18px;
+    }
+    .day-tasks {
+      flex: 1; overflow-y: auto; padding: 6px;
+      display: flex; flex-direction: column; gap: 5px;
+      min-height: 0;
+    }
+    .day-tasks::-webkit-scrollbar { width: 3px; }
+    .day-tasks::-webkit-scrollbar-thumb { background: var(--sep); border-radius: 2px; }
+    .day-add-row {
+      padding: 6px;
+      border-top: 1px solid var(--sep);
+      flex-shrink: 0;
+    }
+    .day-col.is-today .day-add-row { border-top-color: var(--today-border); }
+    .btn-add-task {
+      width: 100%; padding: 7px;
+      border: 1.5px dashed var(--sep);
+      border-radius: 10px;
+      background: none; cursor: pointer;
+      font-size: 18px; color: var(--text3);
+      transition: border-color .15s, color .15s;
+    }
+    .btn-add-task:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* ── TASK CARD ── */
+    .task-card {
+      background: var(--card);
+      border: 1px solid var(--sep);
+      border-radius: 12px;
+      padding: 8px 10px;
+      cursor: grab;
+      user-select: none;
+      position: relative;
+      transition: box-shadow .15s, opacity .15s, transform .15s;
+    }
+    .day-col.is-today .task-card { background: #fff; }
+    .task-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+    .task-card.dragging { opacity: .4; transform: scale(.97); cursor: grabbing; }
+    .task-card.done .task-text { text-decoration: line-through; color: var(--text3); }
+    .task-top { display: flex; align-items: flex-start; gap: 7px; }
+    .task-check {
+      width: 20px; height: 20px; min-width: 20px;
+      border: 2px solid var(--sep); border-radius: 6px;
+      cursor: pointer; background: none;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s;
+      margin-top: 1px;
+    }
+    .task-check:hover { border-color: var(--blue); }
+    .task-card.done .task-check { background: var(--green); border-color: var(--green); }
+    .task-check-mark { display: none; color: #fff; font-size: 11px; font-weight: 700; }
+    .task-card.done .task-check-mark { display: block; }
+    .task-body { flex: 1; min-width: 0; }
+    .task-text {
+      font-size: 13px; font-weight: 500;
+      color: var(--text); line-height: 1.4;
+      word-break: break-word;
+      outline: none;
+      border-radius: 4px;
+    }
+    .task-text[contenteditable="true"] {
+      background: rgba(10,132,255,.06);
+      padding: 2px 4px; margin: -2px -4px;
+    }
+    .task-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+    .task-time {
+      font-size: 11px; font-weight: 600;
+      color: var(--blue);
+      background: rgba(10,132,255,.1);
+      padding: 2px 7px; border-radius: 50px;
+      cursor: pointer;
+    }
+    .task-time:hover { background: rgba(10,132,255,.18); }
+    .task-actions {
+      display: flex; gap: 4px;
+      opacity: 0; transition: opacity .15s;
+      margin-left: auto;
+    }
+    .task-card:hover .task-actions { opacity: 1; }
+    .btn-task {
+      width: 22px; height: 22px;
+      border: none; border-radius: 6px;
+      background: rgba(0,0,0,.06); cursor: pointer;
+      font-size: 12px; color: var(--text2);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .btn-task:hover { background: rgba(255,69,58,.12); color: var(--red); }
+
+    /* ── ADD TASK INLINE FORM ── */
+    .add-form {
+      background: rgba(10,132,255,.05);
+      border: 1.5px solid rgba(10,132,255,.25);
+      border-radius: 12px;
+      padding: 8px 10px;
+    }
+    .add-form input {
+      width: 100%; border: none; background: none;
+      font-size: 13px; font-family: inherit;
+      color: var(--text); outline: none;
+      margin-bottom: 6px;
+    }
+    .add-form-row { display: flex; align-items: center; gap: 6px; }
+    .add-form input[type="time"] {
+      width: 90px; margin: 0;
+      font-size: 12px; color: var(--text2);
+      border: 1px solid var(--sep); border-radius: 6px;
+      padding: 3px 6px;
+    }
+    .add-form-row .btn-primary { width: auto; padding: 5px 14px; font-size: 13px; border-radius: 8px; }
+    .btn-cancel {
+      font-size: 13px; color: var(--text2);
+      background: none; border: none; cursor: pointer; padding: 5px 8px;
+    }
+
+    /* ── VOICE PANEL ── */
+    #voice-panel {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding: 20px;
+      pointer-events: none;
+    }
+    #voice-panel.hidden { display: none; }
+    .voice-sheet {
+      pointer-events: all;
+      background: var(--card);
+      border-radius: 28px 28px 20px 20px;
+      padding: 28px 28px 32px;
+      width: 100%; max-width: 520px;
+      box-shadow: 0 -8px 40px rgba(0,0,0,.15), 0 40px 60px rgba(0,0,0,.1);
+      animation: slideUp .3s cubic-bezier(.16,1,.3,1);
+    }
+    @keyframes slideUp {
+      from { transform: translateY(60px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    .voice-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .voice-title { font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
+    .btn-close {
+      width: 28px; height: 28px;
+      border: none; background: rgba(0,0,0,.07);
+      border-radius: 50%; font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text2);
+    }
+    .voice-center { text-align: center; padding: 16px 0 24px; }
+    .voice-ring {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: rgba(10,132,255,.1);
+      border: 2px solid rgba(10,132,255,.2);
+      margin: 0 auto 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      transition: all .3s ease;
+    }
+    .voice-ring.active {
+      background: rgba(255,69,58,.1);
+      border-color: rgba(255,69,58,.3);
+      animation: pulse-ring 1.2s ease-in-out infinite;
+      box-shadow: 0 0 0 12px rgba(255,69,58,.06), 0 0 0 24px rgba(255,69,58,.03);
+    }
+    @keyframes pulse-ring {
+      0%,100% { transform: scale(1); }
+      50%      { transform: scale(1.06); }
+    }
+    .voice-status { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .voice-hint   { font-size: 13px; color: var(--text2); }
+    #voice-btn-main {
+      margin-top: 20px;
+      background: var(--blue); color: #fff;
+      border: none; border-radius: 50px;
+      padding: 14px 32px; font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    #voice-btn-main:hover { opacity: .88; }
+    #voice-btn-main.stop { background: var(--red); }
+    .voice-result { margin-top: 16px; }
+    .voice-transcript {
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 13px; color: var(--text2);
+      line-height: 1.6; margin-bottom: 12px;
+      max-height: 80px; overflow-y: auto;
+    }
+    .voice-tasks-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .voice-task-item {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px; color: var(--text);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .voice-task-date {
+      font-size: 11px; font-weight: 600;
+      color: var(--blue);
+      background: rgba(10,132,255,.1);
+      padding: 2px 7px; border-radius: 50px;
+      margin-left: auto; white-space: nowrap;
+    }
+    .voice-actions { display: flex; gap: 10px; }
+    .voice-actions .btn-primary { flex: 1; padding: 12px; border-radius: 12px; }
+    .btn-secondary {
+      flex: 1; padding: 12px;
+      background: rgba(0,0,0,.06); border: none;
+      border-radius: 12px; font-size: 15px; font-weight: 600;
+      color: var(--text2); cursor: pointer;
+    }
+    .btn-secondary:hover { background: rgba(0,0,0,.1); }
+
+    /* ── LOADING ── */
+    #loading {
+      position: fixed; inset: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+    }
+    #loading.hidden { display: none; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--sep);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+      background: rgba(28,28,30,.9);
+      color: #fff; font-size: 14px; font-weight: 500;
+      padding: 10px 20px; border-radius: 50px;
+      pointer-events: none;
+      opacity: 0; transition: opacity .25s;
+      z-index: 999; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── TIME EDIT POPUP ── */
+    .time-popup {
+      position: absolute; z-index: 20;
+      background: var(--card);
+      border: 1px solid var(--sep);
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.12);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .time-popup input[type="time"] {
+      border: 1px solid var(--sep); border-radius: 8px;
+      padding: 5px 8px; font-size: 13px; outline: none;
+    }
+    .time-popup button { font-size: 13px; padding: 5px 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup" class="overlay">
+  <div class="modal">
+    <h2>🌅 Plannautro</h2>
+    <p>Введи токен доступа из настроек Vercel<br>(переменная <code>TELEGRAM_WEBHOOK_SECRET</code>)</p>
+    <input type="password" id="token-input" placeholder="6171674e77ad…" autocomplete="off">
+    <button class="btn-primary" onclick="saveToken()">Войти</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <header>
+    <div class="logo">🌅 Plan<span>nautro</span></div>
+    <div class="week-nav">
+      <button onclick="prevWeek()" title="Предыдущая неделя">‹</button>
+      <span id="week-label"></span>
+      <button onclick="nextWeek()" title="Следующая неделя">›</button>
+    </div>
+    <div class="header-actions">
+      <button class="btn-today" onclick="goToday()">Сегодня</button>
+      <button class="btn-mic" id="header-mic" onclick="openVoice()" title="Голосовой ввод">🎙</button>
+    </div>
+  </header>
+  <main id="week-grid"></main>
+</div>
+
+<!-- VOICE PANEL -->
+<div id="voice-panel" class="hidden">
+  <div class="voice-sheet">
+    <div class="voice-header">
+      <span class="voice-title">Голосовой ввод</span>
+      <button class="btn-close" onclick="closeVoice()">✕</button>
+    </div>
+    <div class="voice-center">
+      <div class="voice-ring" id="voice-ring">🎙</div>
+      <div class="voice-status" id="voice-status">Нажми чтобы начать</div>
+      <div class="voice-hint" id="voice-hint">Расскажи о планах на любые дни</div>
+      <button id="voice-btn-main" onclick="toggleRecording()">Начать запись</button>
+    </div>
+    <div class="voice-result hidden" id="voice-result">
+      <div class="voice-transcript" id="voice-transcript"></div>
+      <div class="voice-tasks-list" id="voice-tasks-list"></div>
+      <div class="voice-actions">
+        <button class="btn-secondary" onclick="resetVoice()">Ещё раз</button>
+        <button class="btn-primary" onclick="confirmVoice()">Добавить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading"><div class="spinner"></div></div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────
+let APP_TOKEN = localStorage.getItem('app-token') || '';
+
+const DAY_NAMES = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+const MONTH_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+const MONTH_FULL  = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+
+// ── STATE ────────────────────────────────────────────
+let currentMonday = getMonday(new Date());
+let allTasks = [];
+let mediaRecorder = null;
+let audioChunks = [];
+let pendingVoiceTasks = [];
+let isRecording = false;
+
+// ── INIT ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (APP_TOKEN) {
+    show('app'); hide('setup');
+    loadWeek();
+  } else {
+    show('setup'); hide('app');
+    hide('loading');
+  }
+});
+
+function saveToken() {
+  const v = document.getElementById('token-input').value.trim();
+  if (!v) return;
+  APP_TOKEN = v;
+  localStorage.setItem('app-token', v);
+  hide('setup'); show('app');
+  loadWeek();
+}
+
+// ── DATE UTILS ───────────────────────────────────────
+function getMonday(d) {
+  const date = new Date(d);
+  date.setHours(12, 0, 0, 0);
+  const dow = date.getDay();
+  date.setDate(date.getDate() - (dow === 0 ? 6 : dow - 1));
+  return date;
+}
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+function toISO(d) {
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth() + 1).padStart(2, '0');
+  const dd   = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+function todayISO() { return toISO(new Date()); }
+function fmtDayLabel(d) { return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`; }
+function fmtWeekLabel(mon) {
+  const sun = addDays(mon, 6);
+  if (mon.getMonth() === sun.getMonth())
+    return `${mon.getDate()}–${sun.getDate()} ${MONTH_FULL[mon.getMonth()]}`;
+  return `${mon.getDate()} ${MONTH_SHORT[mon.getMonth()]} — ${sun.getDate()} ${MONTH_SHORT[sun.getMonth()]}`;
+}
+function fmtDateBadge(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  const t = todayISO();
+  if (iso === t) return 'сегодня';
+  const tom = toISO(addDays(new Date(t + 'T12:00:00'), 1));
+  if (iso === tom) return 'завтра';
+  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`;
+}
+
+// ── API ──────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'x-app-token': APP_TOKEN },
+  };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  if (res.status === 401) { logout(); return null; }
+  if (res.status === 204) return null;
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+
+async function loadWeek() {
+  show('loading');
+  try {
+    const week = toISO(currentMonday);
+    allTasks = await api('GET', `/api/tasks?week=${week}`) ?? [];
+    renderWeek();
+  } catch (e) {
+    toast('Ошибка загрузки: ' + e.message);
+  } finally {
+    hide('loading');
+  }
+}
+
+// ── NAVIGATION ───────────────────────────────────────
+function prevWeek() { currentMonday = addDays(currentMonday, -7); loadWeek(); }
+function nextWeek() { currentMonday = addDays(currentMonday,  7); loadWeek(); }
+function goToday()  { currentMonday = getMonday(new Date()); loadWeek(); }
+
+// ── RENDER ───────────────────────────────────────────
+function renderWeek() {
+  const grid = document.getElementById('week-grid');
+  grid.innerHTML = '';
+  const today = todayISO();
+  document.getElementById('week-label').textContent = fmtWeekLabel(currentMonday);
+
+  for (let i = 0; i < 7; i++) {
+    const date = addDays(currentMonday, i);
+    const iso  = toISO(date);
+    const tasks = allTasks.filter(t => t.day === iso);
+    grid.appendChild(buildDayCol(date, iso, tasks, iso === today));
+  }
+}
+
+function buildDayCol(date, iso, tasks, isToday) {
+  const col = document.createElement('div');
+  col.className = 'day-col' + (isToday ? ' is-today' : '');
+  col.dataset.day = iso;
+
+  // Header
+  const head = document.createElement('div');
+  head.className = 'day-head';
+  head.innerHTML = `<div class="day-name">${DAY_NAMES[date.getDay()]}</div>
+    <div class="day-num">${date.getDate()}</div>`;
+  col.appendChild(head);
+
+  // Tasks list
+  const list = document.createElement('div');
+  list.className = 'day-tasks';
+  tasks.forEach(t => list.appendChild(buildTaskCard(t)));
+  col.appendChild(list);
+
+  // Add button row
+  const addRow = document.createElement('div');
+  addRow.className = 'day-add-row';
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-add-task';
+  addBtn.textContent = '+';
+  addBtn.onclick = () => showAddForm(addRow, iso, list, addBtn);
+  addRow.appendChild(addBtn);
+  col.appendChild(addRow);
+
+  // Drag-and-drop on column
+  col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('drag-over'); });
+  col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+  col.addEventListener('drop', async e => {
+    e.preventDefault();
+    col.classList.remove('drag-over');
+    const id = parseInt(e.dataTransfer.getData('taskId'));
+    const newDay = iso;
+    if (!id) return;
+    try {
+      await api('PATCH', '/api/tasks', { id, day: newDay });
+      await loadWeek();
+    } catch (err) { toast('Ошибка: ' + err.message); }
+  });
+
+  return col;
+}
+
+function buildTaskCard(task) {
+  const card = document.createElement('div');
+  card.className = 'task-card' + (task.done ? ' done' : '');
+  card.draggable = true;
+  card.dataset.id = task.id;
+
+  card.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('taskId', task.id);
+    card.classList.add('dragging');
+  });
+  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+  // Checkbox
+  const check = document.createElement('button');
+  check.className = 'task-check';
+  check.innerHTML = '<span class="task-check-mark">✓</span>';
+  check.onclick = () => toggleDone(task, card);
+
+  // Text
+  const text = document.createElement('div');
+  text.className = 'task-text';
+  text.textContent = task.text;
+  text.contentEditable = 'false';
+  text.onclick = () => startEditText(text, task);
+  text.onblur = () => finishEditText(text, task);
+  text.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } };
+
+  // Time badge
+  const meta = document.createElement('div');
+  meta.className = 'task-meta';
+  if (task.time) {
+    const timeBadge = document.createElement('span');
+    timeBadge.className = 'task-time';
+    timeBadge.textContent = task.time;
+    timeBadge.onclick = (e) => { e.stopPropagation(); showTimePopup(timeBadge, task); };
+    meta.appendChild(timeBadge);
+  } else {
+    const addTime = document.createElement('span');
+    addTime.style.cssText = 'font-size:11px;color:var(--text3);cursor:pointer';
+    addTime.textContent = '+ время';
+    addTime.onclick = (e) => { e.stopPropagation(); showTimePopup(addTime, task); };
+    meta.appendChild(addTime);
+  }
+
+  // Delete
+  const actions = document.createElement('div');
+  actions.className = 'task-actions';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'btn-task';
+  delBtn.textContent = '✕';
+  delBtn.title = 'Удалить';
+  delBtn.onclick = () => deleteTask(task.id);
+  actions.appendChild(delBtn);
+  meta.appendChild(actions);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'task-body';
+  body.appendChild(text);
+  body.appendChild(meta);
+
+  const top = document.createElement('div');
+  top.className = 'task-top';
+  top.appendChild(check);
+  top.appendChild(body);
+
+  card.appendChild(top);
+  return card;
+}
+
+// ── TASK ACTIONS ─────────────────────────────────────
+async function toggleDone(task, card) {
+  const newDone = !task.done;
+  try {
+    await api('PATCH', '/api/tasks', { id: task.id, done: newDone });
+    task.done = newDone;
+    card.classList.toggle('done', newDone);
+    const t = allTasks.find(t => t.id === task.id);
+    if (t) t.done = newDone;
+  } catch (e) { toast('Ошибка: ' + e.message); }
+}
+
+function startEditText(el, task) {
+  el.contentEditable = 'true';
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+}
+
+async function finishEditText(el, task) {
+  el.contentEditable = 'false';
+  const newText = el.textContent.trim();
+  if (!newText || newText === task.text) { el.textContent = task.text; return; }
+  try {
+    await api('PATCH', '/api/tasks', { id: task.id, text: newText });
+    task.text = newText;
+    const t = allTasks.find(t => t.id === task.id);
+    if (t) t.text = newText;
+  } catch (e) { el.textContent = task.text; toast('Ошибка: ' + e.message); }
+}
+
+function showTimePopup(anchor, task) {
+  document.querySelectorAll('.time-popup').forEach(p => p.remove());
+  const popup = document.createElement('div');
+  popup.className = 'time-popup';
+  popup.style.cssText = 'top:100%;left:0;margin-top:4px;';
+
+  const inp = document.createElement('input');
+  inp.type = 'time';
+  inp.value = task.time || '';
+
+  const save = document.createElement('button');
+  save.className = 'btn-primary';
+  save.style.cssText = 'width:auto;padding:5px 12px;font-size:13px;border-radius:8px;';
+  save.textContent = 'ОК';
+  save.onclick = async () => {
+    const t = inp.value || null;
+    try {
+      await api('PATCH', '/api/tasks', { id: task.id, time: t });
+      task.time = t;
+      popup.remove();
+      await loadWeek();
+    } catch (e) { toast('Ошибка'); }
+  };
+
+  const clr = document.createElement('button');
+  clr.className = 'btn-cancel';
+  clr.textContent = '✕';
+  clr.onclick = async () => {
+    try {
+      await api('PATCH', '/api/tasks', { id: task.id, time: null });
+      task.time = null;
+      popup.remove();
+      await loadWeek();
+    } catch (e) { toast('Ошибка'); }
+  };
+
+  popup.appendChild(inp);
+  popup.appendChild(save);
+  popup.appendChild(clr);
+
+  const parent = anchor.closest('.task-card');
+  parent.style.position = 'relative';
+  parent.appendChild(popup);
+  inp.focus();
+
+  setTimeout(() => document.addEventListener('click', function h(e) {
+    if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', h); }
+  }), 50);
+}
+
+async function deleteTask(id) {
+  try {
+    await api('DELETE', '/api/tasks', { id });
+    allTasks = allTasks.filter(t => t.id !== id);
+    renderWeek();
+    toast('Задача удалена');
+  } catch (e) { toast('Ошибка: ' + e.message); }
+}
+
+// ── ADD TASK FORM ─────────────────────────────────────
+function showAddForm(row, day, list, addBtn) {
+  addBtn.style.display = 'none';
+  const form = document.createElement('div');
+  form.className = 'add-form';
+
+  const textInp = document.createElement('input');
+  textInp.placeholder = 'Новая задача…';
+  textInp.type = 'text';
+
+  const bottomRow = document.createElement('div');
+  bottomRow.className = 'add-form-row';
+
+  const timeInp = document.createElement('input');
+  timeInp.type = 'time';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-primary';
+  saveBtn.textContent = 'Добавить';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-cancel';
+  cancelBtn.textContent = 'Отмена';
+
+  bottomRow.appendChild(timeInp);
+  bottomRow.appendChild(saveBtn);
+  bottomRow.appendChild(cancelBtn);
+  form.appendChild(textInp);
+  form.appendChild(bottomRow);
+  row.insertBefore(form, row.firstChild);
+  textInp.focus();
+
+  async function submit() {
+    const text = textInp.value.trim();
+    if (!text) return;
+    try {
+      const task = await api('POST', '/api/tasks', { text, time: timeInp.value || null, day });
+      if (task) { allTasks.push(task); list.appendChild(buildTaskCard(task)); }
+      cleanup();
+    } catch (e) { toast('Ошибка: ' + e.message); }
+  }
+
+  function cleanup() { form.remove(); addBtn.style.display = ''; }
+  saveBtn.onclick = submit;
+  cancelBtn.onclick = cleanup;
+  textInp.onkeydown = e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') cleanup(); };
+}
+
+// ── VOICE ────────────────────────────────────────────
+function openVoice() {
+  show('voice-panel');
+  resetVoice();
+}
+
+function closeVoice() {
+  if (isRecording) stopRecording();
+  hide('voice-panel');
+  pendingVoiceTasks = [];
+}
+
+function resetVoice() {
+  if (isRecording) stopRecording();
+  hide('voice-result');
+  pendingVoiceTasks = [];
+  document.getElementById('voice-ring').classList.remove('active');
+  document.getElementById('voice-status').textContent = 'Нажми чтобы начать';
+  document.getElementById('voice-hint').textContent = 'Расскажи о планах на любые дни';
+  const btn = document.getElementById('voice-btn-main');
+  btn.textContent = 'Начать запись';
+  btn.classList.remove('stop');
+}
+
+async function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    await startRecording();
+  }
+}
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : 'audio/mp4';
+    mediaRecorder = new MediaRecorder(stream, { mimeType });
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      await processVoice();
+    };
+    mediaRecorder.start(200);
+    isRecording = true;
+
+    document.getElementById('voice-ring').classList.add('active');
+    document.getElementById('voice-status').textContent = 'Запись…';
+    document.getElementById('voice-hint').textContent = 'Нажми стоп когда закончишь';
+    const btn = document.getElementById('voice-btn-main');
+    btn.textContent = 'Остановить';
+    btn.classList.add('stop');
+  } catch (e) {
+    toast('Нет доступа к микрофону');
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  document.getElementById('voice-ring').classList.remove('active');
+  document.getElementById('voice-status').textContent = 'Обрабатываю…';
+  document.getElementById('voice-hint').textContent = '';
+  const btn = document.getElementById('voice-btn-main');
+  btn.textContent = 'Начать запись';
+  btn.classList.remove('stop');
+  btn.disabled = true;
+}
+
+async function processVoice() {
+  const btn = document.getElementById('voice-btn-main');
+  try {
+    const mimeType = audioChunks[0]?.type || 'audio/webm';
+    const blob = new Blob(audioChunks, { type: mimeType });
+
+    const res = await fetch('/api/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': mimeType, 'x-app-token': APP_TOKEN },
+      body: blob,
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const data = await res.json();
+
+    if (data.transcription) {
+      document.getElementById('voice-transcript').textContent = '« ' + data.transcription + ' »';
+    }
+
+    if (data.tasks && data.tasks.length > 0) {
+      pendingVoiceTasks = data.tasks;
+      const taskList = document.getElementById('voice-tasks-list');
+      taskList.innerHTML = '';
+      data.tasks.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'voice-task-item';
+        item.innerHTML = `<span>${t.text}${t.time ? ` · ${t.time}` : ''}</span>
+          <span class="voice-task-date">${fmtDateBadge(t.day)}</span>`;
+        taskList.appendChild(item);
+      });
+      show('voice-result');
+      document.getElementById('voice-status').textContent = `Найдено задач: ${data.tasks.length}`;
+    } else {
+      document.getElementById('voice-status').textContent = 'Задач не найдено';
+      document.getElementById('voice-hint').textContent = data.transcription ? 'Попробуй описать задачи подробнее' : 'Попробуй ещё раз';
+    }
+  } catch (e) {
+    toast('Ошибка обработки: ' + e.message);
+    document.getElementById('voice-status').textContent = 'Ошибка';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function confirmVoice() {
+  // Tasks already saved by /api/voice, just reload
+  closeVoice();
+  await loadWeek();
+  toast('Задачи добавлены ✓');
+}
+
+// ── HELPERS ──────────────────────────────────────────
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function logout() {
+  localStorage.removeItem('app-token');
+  APP_TOKEN = '';
+  hide('app'); show('setup');
+  document.getElementById('token-input').value = '';
+  toast('Неверный токен');
+}
+
+// Scroll today column into view on mobile
+window.addEventListener('load', () => {
+  const todayCol = document.querySelector('.is-today');
+  if (todayCol) todayCol.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+});
+</script>
+</body>
+</html>
