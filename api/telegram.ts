@@ -42,23 +42,29 @@ async function processMessage(msg: TgMessage): Promise<void> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  // Telegram требует ответа 200 как можно скорее
-  res.status(200).end();
-
   try {
     const secret = req.headers['x-telegram-bot-api-secret-token'];
     if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
-      console.warn('Invalid webhook secret');
+      console.warn('Invalid webhook secret, got:', secret, 'expected:', process.env.TELEGRAM_WEBHOOK_SECRET ? '[set]' : '[NOT SET]');
+      res.status(200).end();
       return;
     }
 
-    if (req.method !== 'POST') return;
+    if (req.method !== 'POST') {
+      res.status(200).end();
+      return;
+    }
 
     const update = req.body as TgUpdate;
-    if (!update?.message) return;
+    if (!update?.message) {
+      res.status(200).end();
+      return;
+    }
 
     await processMessage(update.message);
   } catch (err) {
     console.error('Webhook error:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+  } finally {
+    res.status(200).end();
   }
 }
